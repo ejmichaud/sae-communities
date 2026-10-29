@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAE Community</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #fbfaf8; --panel: #ffffff; --ink: #1d1d1f; --ink2: #55565a; --ink3: #8a8b90;
+    --line: #e4e2dd; --accent: #eb6834; --accent-soft: #fbe3d8; --pos: #2f6db5; --neg: #c8402f;
+    --note: #2f6db5; --note-soft: #e3edf8;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 "Source Sans 3", system-ui, sans-serif; display: flex; flex-direction: column; }
+  code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header a.home { color: var(--ink2); text-decoration: none; }
+  header a.home:hover { color: var(--ink); }
+  header h1 { font-size: 20px; margin: 0; }
+  header .meta { color: var(--ink2); }
+  .badge { font-size: 13px; color: var(--note); background: var(--note-soft); border-radius: 10px; padding: 1px 9px; font-weight: 600; }
+  .nav { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  button, .nav input { font: inherit; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 4px 10px; cursor: pointer; color: var(--ink); }
+  button:hover { border-color: var(--ink3); }
+  .nav input { width: 80px; cursor: text; }
+  .kbd { color: var(--ink3); font-size: 13px; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(320px, 380px) 1fr; min-height: 0; }
+  #left { border-right: 1px solid var(--line); overflow-y: auto; padding: 12px 14px; background: var(--panel); }
+  #right { overflow-y: auto; padding: 14px 20px 40px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .tabs button { padding: 2px 10px; font-size: 14px; }
+  .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  #viz { width: 100%; aspect-ratio: 1; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); position: relative; }
+  #viz svg { width: 100%; height: 100%; display: block; }
+  .caption { font-size: 13px; color: var(--ink2); margin: 6px 0 12px; }
+  .legend-sw { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin: 0 3px 0 6px; }
+  table.lat { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.lat th { text-align: left; font-weight: 600; color: var(--ink2); border-bottom: 1px solid var(--line); padding: 3px 4px; font-size: 13px; }
+  table.lat td { padding: 3px 4px; border-bottom: 1px solid #f0eee9; }
+  table.lat tr { cursor: pointer; }
+  table.lat tr:hover td { background: #f6f4f0; }
+  table.lat tr.sel td { background: var(--accent-soft); }
+  .bar { height: 8px; background: var(--accent); border-radius: 2px; min-width: 0; transition: width 60ms; }
+  h2 { font-size: 18px; margin: 0 0 2px; }
+  .hint { color: var(--ink2); font-size: 14px; margin: 0 0 10px; }
+  .mode { display: flex; gap: 14px; align-items: center; font-size: 14px; color: var(--ink2); margin-bottom: 12px; flex-wrap: wrap; }
+  .doc { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 18px; }
+  .dochead { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--ink2); }
+  .dochead b { color: var(--ink); }
+  .strip { display: block; width: 100%; height: 22px; cursor: pointer; border-bottom: 1px solid var(--line); }
+  .text { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; padding: 10px 12px; max-height: 440px; overflow-y: auto; }
+  .text span { border-radius: 2px; }
+  .text span.nl { color: var(--ink3); }
+  .text span.focus { outline: 1.5px solid var(--ink); }
+  #tip { position: fixed; pointer-events: none; background: var(--ink); color: #fff; font-size: 13px; padding: 6px 9px; border-radius: 6px; max-width: 320px; z-index: 10; display: none; line-height: 1.35; }
+  #tip .tk { font-family: "JetBrains Mono", ui-monospace, monospace; background: #444; padding: 0 4px; border-radius: 3px; white-space: pre; }
+  #tip .sel { color: #ffb38f; font-weight: 700; }
+  .node text { font-size: 10px; fill: var(--ink2); pointer-events: none; font-family: "JetBrains Mono", ui-monospace, monospace; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
+  .node.sel text { fill: var(--ink); font-weight: 700; }
+  .node circle { cursor: pointer; stroke: #fff; stroke-width: 1.5px; }
+  .node.sel circle { stroke: var(--ink); stroke-width: 2.5px; }
+  #loading { padding: 40px; color: var(--ink2); }
+  @media (max-width: 860px) {
+    body { height: auto; display: block; }
+    main { display: block; }
+    #left { border-right: none; border-bottom: 1px solid var(--line); }
+    .kbd { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <a class="home" href="index.html">← All communities</a>
+  <h1 id="title">Community</h1>
+  <span class="meta" id="meta"></span>
+  <span id="note"></span>
+  <div class="nav">
+    <button id="prev" title="Previous community (←)">‹ Prev</button>
+    <button id="next" title="Next community (→)">Next ›</button>
+    <input id="goto" placeholder="go to #" title="Community id, or a latent id prefixed with L (e.g. L6369)">
+    <span class="kbd">← → communities · ↑ ↓ latents</span>
+  </div>
+</header>
+<main>
+  <div id="left">
+    <div class="tabs"><button id="tabGraph" class="on">Coupling graph</button><button id="tabMatrix">Coupling matrix</button></div>
+    <div id="viz"></div>
+    <div class="caption" id="vizcap"></div>
+    <table class="lat"><thead><tr><th>Latent</th><th title="Fraction of Pile tokens on which the latent fires">Fires on</th><th style="width:38%" id="actcol">Activation here</th></tr></thead><tbody id="lattab"></tbody></table>
+  </div>
+  <div id="right"><div id="loading">Loading…</div></div>
+</main>
+<div id="tip"></div>
+<script>
+const params = new URLSearchParams(location.search);
+const cid = +(params.get('id') || 0);
+let D, sel = 0, mode = 'one', view = 'graph', docCache = {}, latMax = [], hoverActs = null;
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const tip = document.getElementById('tip');
+
+async function loadJSON(url) {
+  const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  if (buf[0] === 0x1f && buf[1] === 0x8b) {  // gzip magic: decompress in the browser
+    return JSON.parse(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text());
+  }
+  return JSON.parse(new TextDecoder().decode(buf));  // server already decoded it
+}
+
+// dense per-doc activations: acts[j] = Float32Array(T) for each community latent j that fires in the doc
+function docActs(di) {
+  if (docCache[di]) return docCache[di];
+  const doc = D.docs[di], T = doc.tokens.length, acts = {};
+  for (const [j, deltas, vals] of doc.acts) {
+    const a = new Float32Array(T); let t = 0;
+    for (let k = 0; k < deltas.length; k++) { t += deltas[k]; a[t] = vals[k]; }
+    acts[j] = a;
+  }
+  return (docCache[di] = acts);
+}
+
+// ── navigation (follows the order chosen on the index page, else by id) ────────
+let navOrder = null;
+try { navOrder = JSON.parse(sessionStorage.getItem('order')); } catch (e) {}
+function go(id, latent) { location.href = `community.html?id=${id}` + (latent != null ? `&latent=${latent}` : ''); }
+function step(dir) {
+  if (navOrder && navOrder.includes(cid)) { const i = navOrder.indexOf(cid); go(navOrder[(i + dir + navOrder.length) % navOrder.length]); }
+  else go(Math.max(0, cid + dir));
+}
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+document.getElementById('goto').addEventListener('keydown', async e => {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.trim();
+  if (/^l\d+$/i.test(v)) {  // latent id → its community
+    const idx = await (await fetch('index.json')).json();
+    const r = idx.communities.find(r => r.members.includes(+v.slice(1)));
+    if (r) go(r.id, +v.slice(1)); else e.target.value = 'not listed';
+  } else if (/^\d+$/.test(v)) go(+v);
+});
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowLeft') step(-1);
+  else if (e.key === 'ArrowRight') step(1);
+  else if (e.key === 'ArrowDown' && D) { e.preventDefault(); select((sel + 1) % D.size); }
+  else if (e.key === 'ArrowUp' && D) { e.preventDefault(); select((sel - 1 + D.size) % D.size); }
+});
+
+// ── coupling graph / matrix ─────────────────────────────────────────────────────
+const nodeColor = j => j === sel ? 'var(--accent)' : '#9a9ba0';
+let nodeSel = null;
+function drawGraph() {
+  const box = document.getElementById('viz'); box.innerHTML = '';
+  const W = 400, H = 400, n = D.size, thr = D.edge_threshold;
+  const nodes = D.latents.map((l, j) => ({ j, id: l.id, r: 4 + 9 * Math.sqrt(l.fire_rate / Math.max(...D.latents.map(x => x.fire_rate))) }));
+  const links = [];
+  for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) if (Math.abs(D.J[a][b]) >= thr) links.push({ source: a, target: b, w: D.J[a][b] });
+  const maxW = d3.max(links, l => Math.abs(l.w)) || 1;
+  const svg = d3.select(box).append('svg').attr('viewBox', `0 0 ${W} ${H}`);
+  const link = svg.append('g').selectAll('line').data(links).join('line')
+    .attr('stroke', l => l.w > 0 ? 'var(--pos)' : 'var(--neg)').attr('stroke-opacity', 0.55)
+    .attr('stroke-width', l => 0.6 + 4 * Math.abs(l.w) / maxW);
+  const node = svg.append('g').selectAll('g').data(nodes).join('g').attr('class', 'node')
+    .on('click', (e, d) => select(d.j))
+    .on('mouseenter', (e, d) => showTip(e, `latent <b>${d.id}</b> · ${D.latents[d.j].fire_count[0] ?? 0} firing tokens in its top doc`))
+    .on('mouseleave', hideTip);
+  node.append('circle').attr('r', d => d.r);
+  node.append('text').attr('dy', d => -d.r - 2).attr('text-anchor', 'middle').text(d => d.id)
+    .attr('class', 'lbl').style('display', d => n > 30 && d.j !== sel ? 'none' : null);  // big communities: label only the selected latent
+  nodeSel = node;
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).distance(l => 90 - 50 * Math.abs(l.w) / maxW).strength(0.35))
+    .force('charge', d3.forceManyBody().strength(n > 30 ? -90 : -160))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collide', d3.forceCollide(d => d.r + 10))
+    .stop();
+  for (let i = 0; i < 400; i++) sim.tick();
+  const xs = d3.extent(nodes, d => d.x), ys = d3.extent(nodes, d => d.y), pad = 28;  // fit to the box
+  const s = Math.min((W - 2 * pad) / Math.max(xs[1] - xs[0], 1), (H - 2 * pad) / Math.max(ys[1] - ys[0], 1), 1.6);
+  const tx = x => W / 2 + (x - (xs[0] + xs[1]) / 2) * s, ty = y => H / 2 + (y - (ys[0] + ys[1]) / 2) * s;
+  link.attr('x1', l => tx(l.source.x)).attr('y1', l => ty(l.source.y)).attr('x2', l => tx(l.target.x)).attr('y2', l => ty(l.target.y));
+  node.attr('transform', d => `translate(${tx(d.x)},${ty(d.y)})`);
+  document.getElementById('vizcap').innerHTML =
+    `Each node is a latent (size ∝ √firing rate). Edges are pairs with |<i>J</i>| ≥ ${thr.toFixed(2)}, the cutoff for the 3M strongest couplings among all 16,384 latents; width ∝ |<i>J</i>|.` +
+    `<span class="legend-sw" style="background:var(--pos)"></span>positive <span class="legend-sw" style="background:var(--neg)"></span>negative. Hover a token to light up the latents active on it.`;
+  colorNodes();
+}
+
+function drawMatrix() {
+  const box = document.getElementById('viz'); box.innerHTML = ''; nodeSel = null;
+  const n = D.size, W = 400, pad = 4, c = (W - 2 * pad) / n, thr = D.edge_threshold;
+  // color scale saturates at the 95th percentile of |J| so one outlier pair does not wash out the rest
+  const absJ = D.J.flatMap((row, a) => row.filter((_, b) => a !== b).map(Math.abs)).sort((x, y) => x - y);
+  const m = absJ[Math.floor(0.95 * (absJ.length - 1))] || 1;
+  const col = d3.scaleDiverging(d3.interpolateRdBu).domain([-m, 0, m]).clamp(true);
+  const svg = d3.select(box).append('svg').attr('viewBox', `0 0 ${W} ${W}`);
+  const cells = [];
+  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) if (a !== b) cells.push({ a, b, v: D.J[a][b] });
+  svg.append('g').selectAll('rect').data(cells).join('rect')
+    .attr('x', d => pad + d.b * c).attr('y', d => pad + d.a * c).attr('width', c).attr('height', c)
+    .attr('fill', d => col(d.v)).attr('fill-opacity', d => Math.abs(d.v) >= thr ? 1 : 0.3)
+    .style('cursor', 'pointer')
+    .on('mouseenter', (e, d) => showTip(e, `<i>J</i>(${D.members[d.a]}, ${D.members[d.b]}) = ${d.v.toFixed(2)}${Math.abs(d.v) >= thr ? ' · graph edge' : ''}`))
+    .on('mouseleave', hideTip).on('click', (e, d) => select(d.a));
+  svg.append('rect').attr('id', 'selrow').attr('x', pad).attr('width', W - 2 * pad).attr('height', c)
+    .attr('fill', 'none').attr('stroke', 'var(--accent)').attr('stroke-width', 2);
+  document.getElementById('vizcap').innerHTML =
+    `Mean-field couplings <i>J</i> among the community's latents, ordered by weighted degree (most central first). Blue = positive, red = negative; color saturates at |<i>J</i>| = ${m.toFixed(2)} (95th percentile). Pairs below the graph's edge cutoff (|<i>J</i>| &lt; ${thr.toFixed(2)}) are faded. Click a row to select a latent.`;
+  colorNodes();
+}
+
+function colorNodes() {
+  const maxH = hoverActs ? Math.max(...D.latents.map((_, j) => (hoverActs[j] || 0) / latMax[j]), 1e-9) : 0;
+  if (nodeSel) {
+    nodeSel.select('.lbl').style('display', d => D.size > 30 && d.j !== sel ? 'none' : null);
+    nodeSel.filter(d => d.j === sel).raise();
+    nodeSel.classed('sel', d => d.j === sel).select('circle').attr('fill', d => {
+      if (!hoverActs) return nodeColor(d.j);
+      const v = (hoverActs[d.j] || 0) / latMax[d.j];
+      return v > 0 ? d3.interpolateRgb('#f6c7b3', '#c8401a')(Math.min(1, v)) : '#dcdcdf';
+    });
+  } else {
+    d3.select('#selrow').attr('y', 4 + sel * ((400 - 8) / D.size));
+  }
+  // activation column in the latent table
+  document.querySelectorAll('#lattab tr').forEach((tr, j) => {
+    const v = hoverActs ? (hoverActs[j] || 0) : 0;
+    tr.querySelector('.bar').style.width = hoverActs ? `${Math.min(100, 100 * v / latMax[j])}%` : '0';
+    tr.querySelector('.val').textContent = hoverActs && v ? v : '';
+  });
+}
+
+document.getElementById('tabGraph').onclick = () => { view = 'graph'; tabs(); drawGraph(); };
+document.getElementById('tabMatrix').onclick = () => { view = 'matrix'; tabs(); drawMatrix(); };
+function tabs() {
+  document.getElementById('tabGraph').classList.toggle('on', view === 'graph');
+  document.getElementById('tabMatrix').classList.toggle('on', view === 'matrix');
+}
+
+// ── latent table ────────────────────────────────────────────────────────────────
+function drawTable() {
+  const fmt = r => r >= 0.01 ? `${(100 * r).toFixed(1)}%` : r >= 0.0001 ? `${(100 * r).toFixed(2)}%` : `${(1e6 * r).toFixed(0)} per M`;
+  document.getElementById('lattab').innerHTML = D.latents.map((l, j) =>
+    `<tr data-j="${j}"><td class="mono">${l.id}</td><td>${fmt(l.fire_rate)}</td>` +
+    `<td><div style="display:flex;gap:6px;align-items:center"><div style="flex:1"><div class="bar" style="width:0"></div></div><span class="val mono" style="width:22px;font-size:12px;text-align:right"></span></div></td></tr>`).join('');
+  document.querySelectorAll('#lattab tr').forEach(tr => tr.onclick = () => select(+tr.dataset.j));
+}
+
+// ── documents ───────────────────────────────────────────────────────────────────
+function shade(v) { return v > 0 ? `rgba(235,104,52,${(0.15 + 0.75 * Math.min(1, v)).toFixed(3)})` : ''; }
+
+function drawDocs() {
+  const l = D.latents[sel], right = document.getElementById('right');
+  right.innerHTML = `<h2>Latent <span class="mono">${l.id}</span></h2>
+    <p class="hint">Its top ${l.docs.length} Pile documents, ranked by how many tokens it fires on. Hover a token to see every community latent active on it; click the strip above a document to jump to that position.</p>
+    <div class="mode">Shade tokens by:
+      <label><input type="radio" name="mode" value="one" ${mode === 'one' ? 'checked' : ''}> latent ${l.id}</label>
+      <label><input type="radio" name="mode" value="all" ${mode === 'all' ? 'checked' : ''}> any latent in this community</label></div>
+    <div id="docs"></div>`;
+  right.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => { mode = r.value; drawDocs(); });
+  const docsEl = document.getElementById('docs');
+  l.docs.forEach((di, k) => {
+    const doc = D.docs[di], acts = docActs(di), T = doc.tokens.length;
+    // per-token shade value in [0, 1]
+    const val = new Float32Array(T);
+    if (mode === 'one') { const a = acts[sel]; if (a) for (let t = 0; t < T; t++) val[t] = a[t] / latMax[sel]; }
+    else for (const j in acts) { const a = acts[j]; for (let t = 0; t < T; t++) val[t] = Math.max(val[t], a[t] / latMax[j]); }
+    const nAct = mode === 'one' ? l.fire_count[k] : val.reduce((s, v) => s + (v > 0), 0);
+    const others = D.latents.map((x, j) => x.docs.includes(di) && j !== sel ? x.id : null).filter(x => x != null);
+    const card = document.createElement('div'); card.className = 'doc';
+    card.innerHTML = `<div class="dochead"><b>Document ${k + 1}</b>
+      <span>${mode === 'one' ? `latent ${l.id} fires on <b>${nAct}</b>` : `some community latent fires on <b>${nAct}</b>`} of ${T} tokens</span>
+      ${doc.truncated ? '<span>(first 1,024 tokens)</span>' : ''}
+      ${others.length ? `<span>also a top document for ${others.slice(0, 6).join(', ')}${others.length > 6 ? '…' : ''}</span>` : ''}
+      <span style="margin-left:auto" class="mono">Pile ${doc.key}</span></div>`;
+    // activation strip across positions
+    const cv = document.createElement('canvas'); cv.className = 'strip'; cv.width = Math.max(T, 1); cv.height = 22;
+    const ctx = cv.getContext('2d');
+    for (let t = 0; t < T; t++) if (val[t] > 0) { ctx.fillStyle = shade(val[t]); ctx.fillRect(t, 22 * (1 - Math.min(1, val[t])), 1, 22); }
+    card.appendChild(cv);
+    const text = document.createElement('div'); text.className = 'text';
+    const parts = [];
+    for (let t = 0; t < T; t++) {
+      const tok = doc.tokens[t], bg = shade(val[t]);
+      const shown = tok.includes('\n') ? tok.replace(/\n/g, '↵\n') : tok;
+      parts.push(`<span data-t="${t}"${tok.includes('\n') && !bg ? ' class="nl"' : ''}${bg ? ` style="background:${bg}"` : ''}>${esc(shown)}</span>`);
+    }
+    text.innerHTML = parts.join('');
+    card.appendChild(text);
+    text.addEventListener('mouseover', e => {
+      const t = e.target.dataset && e.target.dataset.t != null ? +e.target.dataset.t : null; if (t == null) return;
+      hoverActs = {}; for (const j in acts) if (acts[j][t] > 0) hoverActs[j] = acts[j][t];
+      colorNodes();
+      const act = Object.entries(hoverActs).sort((a, b) => b[1] / latMax[b[0]] - a[1] / latMax[a[0]]);
+      const tokShow = esc(doc.tokens[t].replace(/\n/g, '↵').replace(/\t/g, '⇥'));
+      showTip(e, `<span class="tk">${tokShow}</span> · token ${t + 1}<br>` + (act.length
+        ? act.slice(0, 10).map(([j, v]) => `<span class="${+j === sel ? 'sel' : ''}">latent ${D.members[j]}: ${v}</span>`).join('<br>') + (act.length > 10 ? `<br>+${act.length - 10} more` : '')
+        : 'no community latent active'));
+    });
+    text.addEventListener('mouseleave', () => { hoverActs = null; colorNodes(); hideTip(); });
+    cv.addEventListener('click', e => {
+      const t = Math.floor(T * (e.offsetX / cv.clientWidth));
+      const span = text.querySelector(`span[data-t="${t}"]`);
+      text.querySelectorAll('.focus').forEach(s => s.classList.remove('focus'));
+      if (span) { span.classList.add('focus'); text.scrollTop = span.offsetTop - text.offsetTop - 120; }
+    });
+    docsEl.appendChild(card);
+    // start each document scrolled to the first token of its densest stretch of shading
+    let best = 0, bestT = 0, run = 0;
+    for (let t = 0; t < T; t++) { run = run * 0.97 + val[t]; if (run > best) { best = run; bestT = t; } }
+    let t0 = Math.max(0, bestT - 60);  // back up to the start of a line (at most 200 tokens)
+    for (let t = t0; t > Math.max(0, t0 - 200); t--) if (doc.tokens[t - 1].includes('\n')) { t0 = t; break; }
+    const start = text.querySelector(`span[data-t="${t0}"]`);
+    document.fonts.ready.then(() => {  // after the web font loads, so line positions are final
+      if (start && text.scrollHeight > text.clientHeight) text.scrollTop = start.offsetTop - text.offsetTop - 4;
+    });
+  });
+}
+
+function showTip(e, html) {
+  tip.innerHTML = html; tip.style.display = 'block';
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8), y = e.clientY + 16 + tip.offsetHeight > innerHeight ? e.clientY - tip.offsetHeight - 10 : e.clientY + 16;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function hideTip() { tip.style.display = 'none'; }
+
+function select(j) {
+  sel = j; hoverActs = null;
+  document.querySelectorAll('#lattab tr').forEach((tr, k) => tr.classList.toggle('sel', k === j));
+  const row = document.querySelector('#lattab tr.sel'); if (row) row.scrollIntoView({ block: 'nearest' });
+  colorNodes(); drawDocs();
+  const p = new URLSearchParams(location.search); p.set('latent', D.members[j]);
+  history.replaceState(null, '', '?' + p.toString());
+}
+
+loadJSON(`c/${cid}.json.gz`).then(d => {
+  D = d;
+  document.title = `Community ${cid}`;
+  document.getElementById('title').textContent = `Community #${cid}`;
+  document.getElementById('meta').textContent = `${D.size} latents · ${D.n_edges} graph edges`;
+  document.getElementById('note').innerHTML = D.note ? `<span class="badge">${esc(D.note)}</span>` : '';
+  // per-latent normalizer for shading: its max activation across all docs on this page
+  latMax = D.members.map(() => 1e-9);
+  D.docs.forEach((_, di) => { const a = docActs(di); for (const j in a) latMax[j] = Math.max(latMax[j], ...a[j]); });
+  drawTable();
+  drawGraph();
+  const want = params.get('latent');
+  select(want != null && D.members.includes(+want) ? D.members.indexOf(+want) : 0);
+}).catch(err => {
+  document.getElementById('right').innerHTML = `<div id="loading">Could not load community ${cid} (${esc(String(err))}).</div>`;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAE Latent Communities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fbfaf8; --panel: #ffffff; --ink: #1d1d1f; --ink2: #55565a; --ink3: #8a8b90;
+    --line: #e4e2dd; --accent: #eb6834; --accent-soft: #fbe3d8; --note: #2f6db5; --note-soft: #e3edf8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 "Source Sans 3", system-ui, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--ink2); margin: 0 0 20px; max-width: 820px; }
+  details.about { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; max-width: 820px; }
+  details.about summary { cursor: pointer; font-weight: 600; }
+  details.about p { margin: 8px 0; color: var(--ink2); }
+  code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.88em; }
+  .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; position: sticky; top: 0; background: var(--bg); padding: 10px 0; z-index: 2; border-bottom: 1px solid var(--line); }
+  input[type=search] { flex: 1 1 280px; font: inherit; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  select { font: inherit; padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .count { color: var(--ink3); font-size: 14px; }
+  .row { display: grid; grid-template-columns: 70px 92px 1fr; gap: 12px; align-items: baseline; padding: 10px 12px; border-bottom: 1px solid var(--line); text-decoration: none; color: inherit; }
+  .row:hover { background: var(--panel); }
+  .cid { font-weight: 700; }
+  .size { color: var(--ink2); font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; min-width: 0; }
+  .chip { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12.5px; background: var(--accent-soft); border-radius: 3px; padding: 0 5px; white-space: pre; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  .badge { font-size: 13px; color: var(--note); background: var(--note-soft); border-radius: 10px; padding: 0 8px; font-weight: 600; }
+  .hit { outline: 2px solid var(--accent); }
+  @media (max-width: 600px) { .row { grid-template-columns: 52px 1fr; } .chips { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SAE latent communities</h1>
+  <p class="sub">Groups of sparse autoencoder latents that tend to fire together, from the residual stream of Gemma-2-9B at layer 11.
+    Pick a community to see how its latents are coupled and the documents they fire on.</p>
+  <details class="about">
+    <summary>How these communities were found</summary>
+    <p><b>SAE.</b> Gemma Scope residual-stream SAE, <code>layer_11/width_16k/average_l0_118</code>: 16,384 latents, about 118 active per token.</p>
+    <p><b>Couplings.</b> We recorded which latents fire on each token across about 1 billion tokens of The Pile. From the covariance <i>C</i> of the binary firing indicators we estimate pairwise Ising couplings with the mean-field approximation, <i>J</i> = −<i>C</i><sup>−1</sup>. A large |<i>J</i><sub>ab</sub>| means latents <i>a</i> and <i>b</i> fire together (or avoid each other) more than the rest of their co-firing pattern explains.</p>
+    <p><b>Communities.</b> We keep the 3 million strongest couplings as edges of a graph over all 16,384 latents and partition it with the Leiden algorithm (modularity, resolution ≈ 200, seed 2). This is the same partition as in the paper; its community #<span id="countid">74</span> best matches the hand-picked latents that tile the character-count manifold. Only communities with at least 3 latents are listed.</p>
+    <p><b>Documents.</b> For each latent we show the Pile documents on which it fires on the most tokens (first 1,024 tokens of each document, as the model saw them).</p>
+  </details>
+  <div class="controls">
+    <input type="search" id="q" placeholder="Search a latent id (e.g. 6369) or a preview token…" autocomplete="off">
+    <select id="sort">
+      <option value="size">Largest first</option>
+      <option value="density">Most densely coupled</option>
+      <option value="id">By id</option>
+      <option value="random">Shuffle</option>
+    </select>
+    <span class="count" id="count"></span>
+  </div>
+  <div id="list"></div>
+</div>
+<script>
+let rows = [], order = [];
+const list = document.getElementById('list'), q = document.getElementById('q'), sortSel = document.getElementById('sort');
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const showTok = s => esc(s.replace(/\n/g, '↵').replace(/\t/g, '⇥'));
+
+function render() {
+  const s = q.value.trim().toLowerCase();
+  const isId = /^\d+$/.test(s);
+  let shown = order.filter(r => !s || (isId ? r.members.includes(+s) || r.id === +s
+                                          : r.preview.some(t => t.toLowerCase().includes(s)) || (r.note || '').toLowerCase().includes(s)));
+  document.getElementById('count').textContent = `${shown.length} of ${rows.length} communities`;
+  list.innerHTML = shown.map(r => {
+    const latQ = isId && r.members.includes(+s) ? `&latent=${s}` : '';
+    return `<a class="row" href="community.html?id=${r.id}${latQ}">
+      <span class="cid">#${r.id}</span>
+      <span class="size">${r.size} latents</span>
+      <span class="chips">${r.note ? `<span class="badge">${esc(r.note)}</span>` : ''}${r.preview.map(t => `<span class="chip">${showTok(t)}</span>`).join('')}</span>
+    </a>`;
+  }).join('');
+}
+
+function resort() {
+  const k = sortSel.value;
+  order = rows.slice();
+  if (k === 'size') order.sort((a, b) => b.size - a.size || a.id - b.id);
+  if (k === 'density') order.sort((a, b) => b.n_edges / (b.size * (b.size - 1) / 2) - a.n_edges / (a.size * (a.size - 1) / 2) || b.size - a.size);
+  if (k === 'id') order.sort((a, b) => a.id - b.id);
+  if (k === 'random') for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  try { sessionStorage.setItem('order', JSON.stringify(order.map(r => r.id))); } catch (e) {}
+  render();
+}
+
+fetch('index.json').then(r => r.json()).then(d => {
+  rows = d.communities;
+  const countRow = rows.find(r => (r.note || '').startsWith('character count'));
+  if (countRow) document.getElementById('countid').textContent = countRow.id;
+  resort();
+});
+q.addEventListener('input', render);
+sortSel.addEventListener('change', resort);
+</script>
+</body>
+</html>
